@@ -1,0 +1,8 @@
+/* Navbar.css */
+
+/* This will ensure the links are centered within their flexbox containers */
+.navbar-nav .nav-link {
+    flex: 1;
+    text-align: center;
+  }
+  
