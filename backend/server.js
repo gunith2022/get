@@ -1,192 +1,172 @@
-// const express = require("express")
-// const mysql = require('mysql');
-// const cors = require('cors');
-
-// const app = express();
-// app.use(cors());
-// app.use(express.json())
-
-// const db = mysql.createConnection({
-//     host : 'localhost',
-//     user : 'root',
-//     password : 'root',
-//     database : '_get'
-// }
-// )
-
-// app.post('/signup',(req,res) =>{
-//     const sql = "INSERT INTO user ('fullame','rollno','email','password') VALUES (?,?,?,?)";
-//     const values = [
-//         req.body.fullname,
-//         req.body.rollno,
-//         req.body.email,
-//         req.body.password
-//     ]
-//     db.query(sql,[values],(err, data) =>{
-//         if(err){return res.json("Error ello")}
-//         return res.json(data);
-
-//     })
-// })
-// app.listen(3307,()=>{
-//     console.log("hi");
-
-// })
 const express = require("express");
 const mysql = require('mysql2');
 const cors = require('cors');
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const cookieParser = require("cookie-parser");
+const { Cashfree } = require("cashfree-pg");
+require('dotenv').config();
 
 const app = express();
 app.use(cors({
-    origin : ["http://localhost:3000"],
-    methods :["POST","GET"],
-    credentials : true
-}
-  
-));
+    origin: ["http://localhost:3000"],
+    methods: ["POST", "GET"],
+    credentials: true
+}));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Create a connection pool instead of a single connection
 const db = mysql.createPool({
-    host: 'localhost',
-    user: 'root',
-    password: 'root',
-    database: '_get',
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || 'root',
+    database: process.env.DB_NAME || '_get',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
 });
 
-// Check if the connection pool successfully created
 db.getConnection((err, connection) => {
     if (err) {
         console.error('Error connecting to the database:', err);
         return;
     }
     console.log('Connected to the database.');
-    connection.release(); // release the connection
+    connection.release();
 });
 
-// Endpoint to handle user registration
-// app.post('/signup', (req, res) => {
-//     const { fullname, rollno, email, password } = req.body;
-//     const sql = "INSERT INTO user (fullname, rollno, email, password) VALUES (?, ?, ?, ?)";
-//     db.execute(sql, [fullname, rollno, email, password], (err, result) => {
-//         if (err) {
-//             console.error('Error during database query:', err);
-//             return res.json({ error: "Error", details: err });
-//         }
-//         return res.json({ message: "User registered successfully", result });
-//     });
-// });
-const saltRounds = 10;
+Cashfree.XClientId = process.env.CLIENT_ID;
+Cashfree.XClientSecret = process.env.CLIENT_SECRET;
+Cashfree.XEnvironment = Cashfree.Environment.SANDBOX;
 
-app.post('/signup', (req, res) => {
+function generateOrderId() {
+    const uniqueId = crypto.randomBytes(16).toString('hex');
+    const hash = crypto.createHash('sha256').update(uniqueId).digest('hex');
+    return hash.substr(0, 12);
+}
+
+const verifyUser = (req, res, next) => {
+    const token = req.cookies.token;
+    if (!token) {
+        return res.status(401).json({ error: "You are not authenticated" });
+    }
+    jwt.verify(token, process.env.JWT_SECRET || "GET", (err, decoded) => {
+        if (err) {
+            return res.status(403).json({ error: "Token is not valid" });
+        }
+        req.user = decoded;
+        next();
+    });
+};
+
+app.get('/payment', verifyUser, async (req, res) => {
+    try {
+        const orderId = generateOrderId();
+        const { rollno } = req.user;
+        
+        const userQuery = "SELECT fullname, email FROM user WHERE rollno = ?";
+        const [rows] = await db.promise().query(userQuery, [rollno]);
+        if (rows.length === 0) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        const user = rows[0];
+
+        const request = {
+            order_amount: 1.00,
+            order_currency: "INR",
+            order_id: orderId,
+            customer_details: {
+                customer_id: rollno,
+                customer_phone: "9392582990",  // Adjust to use actual user phone number
+                customer_name: user.fullname,
+                customer_email: user.email
+            }
+        };
+        const response = await Cashfree.PGCreateOrder("2023-08-01", request);
+        console.log(response.data);
+        res.json(response.data);
+    } catch (error) {
+        console.error('Error creating payment order:', error);
+        res.status(500).json({ error: "Failed to create payment order" });
+    }
+});
+
+app.post('/verify', verifyUser, async (req, res) => {
+    try {
+        let {orderId} = req.body;
+        const response = await Cashfree.PGOrderFetchPayments("2023-08-01", orderId).then((response)=>{
+            res.json(response.data);
+        }).catch((error)=>{
+            console.log(error)
+        })
+       
+    } catch (error) {
+        console.error('Error verifying payment:', error);
+        res.status(500).json({ error: "Failed to verify payment" });
+    }
+});
+
+app.post('/signup', async (req, res) => {
     const { fullname, rollno, email, password } = req.body;
-
-    // Input validation and sanitization should be added here
-
     if (!fullname || !rollno || !email || !password) {
         return res.status(400).json({ error: "All fields are required" });
     }
 
-    bcrypt.hash(password.toString(), saltRounds, (err, hash) => {
-        if (err) {
-            console.error('Error while hashing password:', err);
-            return res.status(500).json({ error: "Error while hashing password" });
-        }
-
+    try {
+        const hash = await bcrypt.hash(password.toString(), 10);
         const sql = "INSERT INTO user (fullname, rollno, email, password) VALUES (?, ?, ?, ?)";
         const values = [fullname, rollno, email, hash];
-
-        db.execute(sql, values, (err, result) => { // Corrected parameters
+        db.execute(sql, values, (err, result) => {
             if (err) {
                 console.error('Error during database query:', err);
                 return res.status(500).json({ error: "Error during database query", details: err });
             }
             return res.status(201).json({ message: "User registered successfully", result });
         });
-    });
+    } catch (err) {
+        console.error('Error while hashing password:', err);
+        return res.status(500).json({ error: "Error while hashing password" });
+    }
 });
 
-
-// app.post('/login', (req, res) => {
-//     const { email, password } = req.body;
-//     const sql = "SELECT * FROM user WHERE email =? AND password = ?";
-//     db.execute(sql, [email, password], (err, result) => {
-//         if (err) {
-//             console.error('Error during database query:', err);
-//             return res.json({ error: "Error", details: err });
-//         }
-//         // 
-//         if(data.length>0){
-//             return res.json("success");
-//         }
-//         else return res.json("Failure")
-//     });
-// });
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     const { email, password } = req.body;
-
-    // Input validation and sanitization should be added here
-
     if (!email || !password) {
         return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const sql = "SELECT * FROM user WHERE email = ?";
-
-    db.execute(sql, [email], (err, results) => {
-        if (err) {
-            console.error('Error during database query:', err);
-            return res.status(500).json({ error: "Database query error", details: err });
-        }
-
-        if (results.length === 0) {
-            return res.status(401).json({ error: "Invalid email or password" });
-        }
-
-        const user = results[0];
-        bcrypt.compare(password.toString(), user.password, (err, response) => {
+    try {
+        const sql = "SELECT * FROM user WHERE email = ?";
+        db.execute(sql, [email], async (err, results) => {
             if (err) {
-                console.error('Error while comparing passwords:', err);
-                return res.status(500).json({ error: "Error while comparing passwords" });
+                console.error('Error during database query:', err);
+                return res.status(500).json({ error: "Database query error", details: err });
+            }
+            if (results.length === 0) {
+                return res.status(401).json({ error: "Invalid email or password" });
             }
 
-            if (response) {
-                const rollno = user.rollno;
-                const token = jwt.sign({rollno},"GET",{expiresIn : '1d'});
-                res.cookie('token',token);
-
+            const user = results[0];
+            const match = await bcrypt.compare(password.toString(), user.password);
+            if (match) {
+                const token = jwt.sign({ rollno: user.rollno }, process.env.JWT_SECRET || "GET", { expiresIn: '1d' });
+                res.cookie('token', token);
                 return res.status(200).json({ status: "Success" });
             } else {
                 return res.status(401).json({ error: "Invalid email or password" });
             }
         });
-    });
-});
-const verifyUser = (req, res, next) => {
-    const token = req.cookies.token; // Corrected to use `req.cookies`
-    if (!token) {
-        return res.status(401).json({ Error: "You are not authenticated" });
-    } else {
-        jwt.verify(token, "GET", (err, decoded) => {
-            if (err) {
-                return res.status(403).json({ Error: "Token is not valid" });
-            } else {
-                req.rollno = decoded.rollno;
-                next();
-            }
-        });
+    } catch (err) {
+        console.error('Error during login process:', err);
+        return res.status(500).json({ error: "Internal server error" });
     }
-};
+});
 
 app.get('/check-auth', verifyUser, (req, res) => {
-    return res.json({ status: "Success", rollno: req.rollno });
+    return res.json({ status: "Success", rollno: req.user.rollno });
 });
 
 app.get('/logout', (req, res) => {
@@ -194,34 +174,21 @@ app.get('/logout', (req, res) => {
     return res.json({ status: "Success" });
 });
 
-
 app.post('/api/check-ticket', verifyUser, (req, res) => {
     const { eventName } = req.body;
-    const rollno = req.rollno;
+    const rollno = req.user.rollno;
 
     const sql = `SELECT * FROM ${mysql.escapeId(eventName)} WHERE rollno = ?`;
-
     db.execute(sql, [rollno], (err, results) => {
         if (err) {
             console.error('Error during database query:', err);
             return res.status(500).json({ error: "Database query error", details: err });
         }
-
-        if (results.length > 0) {
-            return res.status(200).json({ hasTicket: true });
-        } else {
-            return res.status(200).json({ hasTicket: false });
-        }
+        return res.status(200).json({ hasTicket: results.length > 0 });
     });
 });
 
-// app.listen(3307, () => {
-//     console.log("Server is running on port 3307");
-// });
-
-
-// Start the server
-app.listen(3307, () => {
-    console.log("Server is running on port 3307");
+const port = process.env.PORT || 3307;
+app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
 });
-
