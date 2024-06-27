@@ -195,7 +195,29 @@ app.get('/logout', (req, res) => {
 });
 
 
+app.post('/api/check-ticket', verifyUser, (req, res) => {
+    const { eventName } = req.body;
+    const rollno = req.rollno;
 
+    const sql = `SELECT * FROM ${mysql.escapeId(eventName)} WHERE rollno = ?`;
+
+    db.execute(sql, [rollno], (err, results) => {
+        if (err) {
+            console.error('Error during database query:', err);
+            return res.status(500).json({ error: "Database query error", details: err });
+        }
+
+        if (results.length > 0) {
+            return res.status(200).json({ hasTicket: true });
+        } else {
+            return res.status(200).json({ hasTicket: false });
+        }
+    });
+});
+
+// app.listen(3307, () => {
+//     console.log("Server is running on port 3307");
+// });
 
 
 // Start the server
