@@ -41,46 +41,43 @@
 // };
 
 // export default CustomNavbar;
+// 
 import React from 'react';
 import { Navbar, Nav, Container, Button } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './Navbar.css'; // Ensure that your custom styles are defined here
 
-
-
 const CustomNavbar = () => {
-  const navigate = useNavigate();
+    const navigate = useNavigate();
 
-  const handleLogout = () => {
-    axios.get('http://localhost:3307/logout', { withCredentials: true })
-      .then(res => {
-        console.log('Logout successful');
-        navigate('/'); // Redirect to login page after logout
-      })
-      .catch(err => console.error('Logout error:', err));
-  };
+    const handleLogout = () => {
+        axios.get('http://localhost:3307/logout', { withCredentials: true })
+            .then(res => {
+                console.log('Logout successful');
+                navigate('/');
+            })
+            .catch(err => console.error('Logout error:', err));
+    };
 
-  return (
-    <Navbar bg="dark" variant="dark" expand="lg" className="custom-navbar">
-      <Container>
-        <Navbar.Brand as={Link} to="/">BrandName</Navbar.Brand>
-        <Navbar.Toggle aria-controls="basic-navbar-nav" />
-        <Navbar.Collapse id="basic-navbar-nav">
-          <Nav className="ms-auto"> {/* Align links to the right */}
-            <Nav.Link as={Link} to="/profile">Profile</Nav.Link>
-            <Nav.Link as={Link} to="/ieee">IEEE</Nav.Link>
-            <Nav.Link as={Link} to="/aac">AAC</Nav.Link>
-            <Nav.Link as={Link} to="/sdc">SDC</Nav.Link>
-            <Nav.Link as={Link} to="/rhythms">Rhythms</Nav.Link>
-            {/* Logout Button */}
-            <Button variant="outline-light" onClick={handleLogout}>Logout</Button>
-          </Nav>
-        </Navbar.Collapse>
-      </Container>
-    </Navbar>
-  );
-};
+    return  (
+        <Navbar bg="dark" variant="dark" expand="lg" className="custom-navbar">
+            <Container>
+                <Navbar.Brand as={Link} to="/home">GET-TICKETS</Navbar.Brand>
+                <Navbar.Toggle aria-controls="basic-navbar-nav" />
+                <Navbar.Collapse id="basic-navbar-nav">
+                    <Nav className="ms-auto">
+                        <Nav.Link as={Link} to="/profile">Profile</Nav.Link>
+                        <Nav.Link href="https://www.ieee.org" target="_blank" rel="noopener noreferrer">IEEE</Nav.Link>
+                        <Nav.Link href="https://www.aac.org" target="_blank" rel="noopener noreferrer">AAC</Nav.Link>
+                        <Nav.Link href="https://www.sdc.com" target="_blank" rel="noopener noreferrer">SDC</Nav.Link>
+                        <Nav.Link href="https://www.rhythms.com" target="_blank" rel="noopener noreferrer">Rhythms</Nav.Link>
+                        <Button variant="outline-light" onClick={handleLogout}>Logout</Button>
+                    </Nav>
+                </Navbar.Collapse>
+            </Container>
+        </Navbar>
+    );
+}
 
 export default CustomNavbar;
-

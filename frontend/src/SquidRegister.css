@@ -1,0 +1,29 @@
+/* Additional styling for the SquidRegister component */
+.squid-register-container {
+    background-color: #333; /* Dark background */
+    color: #fff; /* White text for contrast */
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.squid-register-container .card {
+    /* background-color: #444; Slightly lighter dark background for the card */
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.squid-register-container .card-header {
+    background-color: #000; /* Black color for the header */
+    color: #fff;
+}
+
+.squid-register-container .btn {
+    width: 100%;
+    background-color: #000; /* Black color for the button */
+    border: none;
+}
+
+.squid-register-container .btn:hover {
+    background-color: #555; /* Dark gray on hover */
+ }

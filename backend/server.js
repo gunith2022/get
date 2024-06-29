@@ -9,11 +9,19 @@ const { Cashfree } = require("cashfree-pg");
 require('dotenv').config();
 
 const app = express();
+// app.use(cors({
+//     origin: ["http://localhost:3000"],
+//     methods: ["POST", "GET"],
+//     credentials: true
+// }));
+
+
 app.use(cors({
     origin: ["http://localhost:3000"],
     methods: ["POST", "GET"],
     credentials: true
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -47,6 +55,19 @@ function generateOrderId() {
     return hash.substr(0, 12);
 }
 
+// const verifyUser = (req, res, next) => {
+//     const token = req.cookies.token;
+//     if (!token) {
+//         return res.status(401).json({ error: "You are not authenticated" });
+//     }
+//     jwt.verify(token, process.env.JWT_SECRET || "GET", (err, decoded) => {
+//         if (err) {
+//             return res.status(403).json({ error: "Token is not valid" });
+//         }
+//         req.user = decoded;
+//         next();
+//     });
+// };
 const verifyUser = (req, res, next) => {
     const token = req.cookies.token;
     if (!token) {
@@ -60,6 +81,7 @@ const verifyUser = (req, res, next) => {
         next();
     });
 };
+
 
 app.get('/payment', verifyUser, async (req, res) => {
     try {
@@ -96,8 +118,20 @@ app.get('/payment', verifyUser, async (req, res) => {
 
 app.post('/verify', verifyUser, async (req, res) => {
     try {
-        let {orderId} = req.body;
+        let {orderId, eventName} = req.body;
+            const {rollno} = req.user
         const response = await Cashfree.PGOrderFetchPayments("2023-08-01", orderId).then((response)=>{
+            console.log(response.data)
+            const insertQuery = `INSERT INTO ${mysql.escapeId(eventName)} (rollno) VALUES (?)`;
+            db.execute(insertQuery, [rollno], (err, result) => {
+                if (err) {
+                    console.error('Error inserting user into event table:', err);
+                    return res.status(500).json({ error: "Failed to insert user into event table" });
+                }
+                console.log(result.insertId)
+                console.log('User added to event table');
+                res.json({ status: "Payment verified and user added to event" });
+            });
             res.json(response.data);
         }).catch((error)=>{
             console.log(error)
@@ -108,6 +142,34 @@ app.post('/verify', verifyUser, async (req, res) => {
         res.status(500).json({ error: "Failed to verify payment" });
     }
 });
+// app.post('/verify', verifyUser, async (req, res) => {
+//     try {
+//        let{ orderId, eventName } = req.body; // Extract eventName from request body
+//         const response = await Cashfree.PGOrderFetchPayments("2023-08-01", orderId).
+        
+//         if (response.data.payment_status === 'SUCCESS') {
+            
+
+//             // Insert the user into the event table upon successful payment
+//             const insertQuery = `INSERT INTO ${mysql.escapeId(eventName)} (rollno) VALUES (?)`;
+//             db.execute(insertQuery, [rollno], (err, result) => {
+//                 if (err) {
+//                     console.error('Error inserting user into event table:', err);
+//                     return res.status(500).json({ error: "Failed to insert user into event table" });
+//                 }
+//                 console.log('User added to event table');
+//                 res.json({ status: "Payment verified and user added to event" });
+//             });
+//         } else {
+//             res.status(400).json({ error: "Payment verification failed or payment not successful" });
+//         }
+//     } catch (error) {
+//         console.error('Error verifying payment:', error);
+//         res.status(500).json({ error: "Failed to verify payment" });
+//     }
+// });
+
+
 
 app.post('/signup', async (req, res) => {
     const { fullname, rollno, email, password } = req.body;
@@ -132,6 +194,38 @@ app.post('/signup', async (req, res) => {
     }
 });
 
+// app.post('/login', async (req, res) => {
+//     const { email, password } = req.body;
+//     if (!email || !password) {
+//         return res.status(400).json({ error: "Email and password are required" });
+//     }
+
+//     try {
+//         const sql = "SELECT * FROM user WHERE email = ?";
+//         db.execute(sql, [email], async (err, results) => {
+//             if (err) {
+//                 console.error('Error during database query:', err);
+//                 return res.status(500).json({ error: "Database query error", details: err });
+//             }
+//             if (results.length === 0) {
+//                 return res.status(401).json({ error: "Invalid email or password" });
+//             }
+
+//             const user = results[0];
+//             const match = await bcrypt.compare(password.toString(), user.password);
+//             if (match) {
+//                 const token = jwt.sign({ rollno: user.rollno }, process.env.JWT_SECRET || "GET", { expiresIn: '1d' });
+//                 res.cookie('token', token);
+//                 return res.status(200).json({ status: "Success" });
+//             } else {
+//                 return res.status(401).json({ error: "Invalid email or password" });
+//             }
+//         });
+//     } catch (err) {
+//         console.error('Error during login process:', err);
+//         return res.status(500).json({ error: "Internal server error" });
+//     }
+// });
 app.post('/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -153,7 +247,7 @@ app.post('/login', async (req, res) => {
             const match = await bcrypt.compare(password.toString(), user.password);
             if (match) {
                 const token = jwt.sign({ rollno: user.rollno }, process.env.JWT_SECRET || "GET", { expiresIn: '1d' });
-                res.cookie('token', token);
+                res.cookie('token', token, { httpOnly: true, sameSite: 'Strict' });
                 return res.status(200).json({ status: "Success" });
             } else {
                 return res.status(401).json({ error: "Invalid email or password" });
